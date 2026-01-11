@@ -11,11 +11,10 @@ spec:
       {{- include "kubesftp.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with .Values.podAnnotations }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       labels:
         {{- include "kubesftp.selectorLabels" . | nindent 8 }}
     spec:
@@ -51,13 +50,28 @@ spec:
         volumeMounts:
         - name: sftp-data
           mountPath: /home
-          {{- if .Values.persistence.subPath }}
-          subPath: {{ .Values.persistence.subPath }}
-          {{- end }}
-        {{- if or .Values.sshHostKeys.rsa .Values.sshHostKeys.dsa .Values.sshHostKeys.ecdsa .Values.sshHostKeys.ed25519 }}
+        {{- if .Values.sshHostKeys.rsa }}
         - name: host-keys
           mountPath: /etc/ssh/ssh_host_rsa_key
           subPath: ssh_host_rsa_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sshHostKeys.dsa }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_dsa_key
+          subPath: ssh_host_dsa_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sshHostKeys.ecdsa }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_ecdsa_key
+          subPath: ssh_host_ecdsa_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sshHostKeys.ed25519 }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_ed25519_key
+          subPath: ssh_host_ed25519_key
           readOnly: true
         {{- end }}
         args:
