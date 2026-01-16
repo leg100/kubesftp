@@ -163,12 +163,23 @@ Then base64 encode them and configure the chart:
 # Base64 encode the keys
 RSA_KEY=$(cat ssh_host_rsa_key | base64 -w 0)
 ED25519_KEY=$(cat ssh_host_ed25519_key | base64 -w 0)
+
+# Create values file with encoded keys
+cat > ssh-keys-values.yaml <<EOF
+sshHostKeys:
+  rsa: "${RSA_KEY}"
+  ed25519: "${ED25519_KEY}"
+EOF
+
+# Install with the SSH keys
+helm install my-sftp charts/kubesftp -f ssh-keys-values.yaml -f my-values.yaml
 ```
 
+Or directly in your values.yaml:
 ```yaml
 sshHostKeys:
-  rsa: "<base64-encoded-rsa-key>"
-  ed25519: "<base64-encoded-ed25519-key>"
+  rsa: "LS0tLS1CRUdJTi... (your base64-encoded RSA key)"
+  ed25519: "LS0tLS1CRUdJTi... (your base64-encoded ED25519 key)"
 ```
 
 ### Example 4: NodePort service type

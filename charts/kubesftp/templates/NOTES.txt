@@ -22,7 +22,8 @@
 
 3. SFTP Users configured:
 {{- range .Values.sftpUsers }}
-   - {{ . }}
+{{- $parts := split ":" . }}
+   - Username: {{ $parts._0 }}, UID: {{ $parts._2 }}, GID: {{ $parts._3 }}
 {{- end }}
 {{- else }}
 
