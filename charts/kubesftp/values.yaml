@@ -47,9 +47,9 @@ service:
 
 # SFTP users configuration
 # Format: username:password:uid:gid:directory
-# Example: "foo:pass:1001:100:upload"
-sftpUsers:
-  - "demo:demo:1001:100"
+# Example: "foo:strongpassword:1001:100:upload"
+# NOTE: You must set secure credentials before deploying.
+sftpUsers: []
 
 # Persistence configuration
 persistence:

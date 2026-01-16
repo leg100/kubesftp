@@ -5,7 +5,7 @@
   echo sftp://$NODE_IP:$NODE_PORT
 {{- else if eq .Values.service.type "LoadBalancer" }}
   NOTE: It may take a few minutes for the LoadBalancer IP to be available.
-        You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "kubesftp.fullname" . }}'
+        You can watch the status by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "kubesftp.fullname" . }}'
   export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "kubesftp.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
   echo sftp://$SERVICE_IP:{{ .Values.service.port }}
 {{- else if eq .Values.service.type "ClusterIP" }}
@@ -14,6 +14,7 @@
   kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 2222:22
 {{- end }}
 
+{{- if .Values.sftpUsers }}
 2. Connect to the SFTP server using:
 {{- $firstUser := index .Values.sftpUsers 0 }}
 {{- $username := (split ":" $firstUser)._0 }}
@@ -22,6 +23,13 @@
 3. SFTP Users configured:
 {{- range .Values.sftpUsers }}
    - {{ . }}
+{{- end }}
+{{- else }}
+
+2. WARNING: No SFTP users configured!
+   You must configure users in values.sftpUsers before the server will be functional.
+   Format: username:password:uid:gid:directory
+   Example: "alice:strongpassword:1001:100:upload"
 {{- end }}
 
 {{- if .Values.persistence.enabled }}

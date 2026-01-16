@@ -74,10 +74,12 @@ spec:
           subPath: ssh_host_ed25519_key
           readOnly: true
         {{- end }}
+        {{- if .Values.sftpUsers }}
         args:
           {{- range .Values.sftpUsers }}
           - {{ . | quote }}
           {{- end }}
+        {{- end }}
       volumes:
       - name: sftp-data
         {{- if .Values.persistence.enabled }}

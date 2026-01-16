@@ -14,13 +14,23 @@ This chart bootstraps an SFTP server deployment on a Kubernetes cluster using th
 
 ## Installing the Chart
 
+**Important**: You must configure SFTP users before installation. The chart does not include default credentials for security reasons.
+
 To install the chart with the release name `my-sftp`:
 
 ```bash
-helm install my-sftp charts/kubesftp
+# Create a values file with your user credentials
+cat > my-values.yaml <<EOF
+sftpUsers:
+  - "alice:strongpassword:1001:100"
+  - "bob:anotherpassword:1002:100:upload"
+EOF
+
+# Install with custom values
+helm install my-sftp charts/kubesftp -f my-values.yaml
 ```
 
-The command deploys an SFTP server on the Kubernetes cluster with default configuration. The [Parameters](#parameters) section lists the parameters that can be configured during installation.
+The command deploys an SFTP server on the Kubernetes cluster with your configuration. The [Parameters](#parameters) section lists the parameters that can be configured during installation.
 
 ## Uninstalling the Chart
 
@@ -64,17 +74,19 @@ The command removes all the Kubernetes components associated with the chart and 
 
 | Name                | Description                                                  | Value                    |
 | ------------------- | ------------------------------------------------------------ | ------------------------ |
-| `sftpUsers`         | List of SFTP users in format: username:password:uid:gid     | `["demo:demo:1001:100"]` |
+| `sftpUsers`         | List of SFTP users in format: username:password:uid:gid     | `[]` (must be configured) |
 
 The `sftpUsers` parameter accepts a list of user definitions. Each user is defined in the format:
 `username:password:uid:gid[:directory]`
 
+**Note**: For security, no default users are configured. You must set this before deployment.
+
 Example:
 ```yaml
 sftpUsers:
-  - "user1:pass123:1001:100"
-  - "user2:pass456:1002:100:upload"
-  - "user3:pass789:1003:100:data"
+  - "user1:strongpass123:1001:100"
+  - "user2:securepass456:1002:100:upload"
+  - "user3:safepass789:1003:100:data"
 ```
 
 ### Persistence parameters
@@ -146,17 +158,17 @@ ssh-keygen -t rsa -f ssh_host_rsa_key -N ''
 ssh-keygen -t ed25519 -f ssh_host_ed25519_key -N ''
 ```
 
-Then configure the chart:
+Then base64 encode them and configure the chart:
+```bash
+# Base64 encode the keys
+RSA_KEY=$(cat ssh_host_rsa_key | base64 -w 0)
+ED25519_KEY=$(cat ssh_host_ed25519_key | base64 -w 0)
+```
+
 ```yaml
 sshHostKeys:
-  rsa: |
-    -----BEGIN OPENSSH PRIVATE KEY-----
-    [your key content here]
-    -----END OPENSSH PRIVATE KEY-----
-  ed25519: |
-    -----BEGIN OPENSSH PRIVATE KEY-----
-    [your key content here]
-    -----END OPENSSH PRIVATE KEY-----
+  rsa: "<base64-encoded-rsa-key>"
+  ed25519: "<base64-encoded-ed25519-key>"
 ```
 
 ### Example 4: NodePort service type
@@ -194,7 +206,7 @@ You can:
 
 ## Security Considerations
 
-1. **Change default passwords**: The default configuration includes demo credentials. Always change these in production.
+1. **Set strong passwords**: Always use strong, unique passwords for SFTP users.
 2. **Use SSH keys**: Consider using SSH key authentication instead of passwords.
 3. **Persistent host keys**: For production, provide persistent SSH host keys to avoid "host key changed" warnings.
 4. **Network policies**: Implement Kubernetes NetworkPolicies to restrict access.
