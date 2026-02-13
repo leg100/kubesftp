@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubesftp.fullname" . }}
+  labels:
+    {{- include "kubesftp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kubesftp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kubesftp.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kubesftp.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: ssh
+          containerPort: 22
+          protocol: TCP
+        livenessProbe:
+          tcpSocket:
+            port: ssh
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: ssh
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        volumeMounts:
+        - name: sftp-data
+          mountPath: /home
+        {{- if .Values.sshHostKeys.rsa }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_rsa_key
+          subPath: ssh_host_rsa_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sshHostKeys.dsa }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_dsa_key
+          subPath: ssh_host_dsa_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sshHostKeys.ecdsa }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_ecdsa_key
+          subPath: ssh_host_ecdsa_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sshHostKeys.ed25519 }}
+        - name: host-keys
+          mountPath: /etc/ssh/ssh_host_ed25519_key
+          subPath: ssh_host_ed25519_key
+          readOnly: true
+        {{- end }}
+        {{- if .Values.sftpUsers }}
+        args:
+          {{- range .Values.sftpUsers }}
+          - {{ . | quote }}
+          {{- end }}
+        {{- end }}
+      volumes:
+      - name: sftp-data
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "kubesftp.fullname" .)) }}
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+      {{- if or .Values.sshHostKeys.rsa .Values.sshHostKeys.dsa .Values.sshHostKeys.ecdsa .Values.sshHostKeys.ed25519 }}
+      - name: host-keys
+        secret:
+          secretName: {{ include "kubesftp.fullname" . }}-host-keys
+          defaultMode: 0600
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

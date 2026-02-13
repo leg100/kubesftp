@@ -1,0 +1,49 @@
+1. Get the SFTP server address by running these commands:
+{{- if eq .Values.service.type "NodePort" }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "kubesftp.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo sftp://$NODE_IP:$NODE_PORT
+{{- else if eq .Values.service.type "LoadBalancer" }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "kubesftp.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "kubesftp.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo sftp://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if eq .Values.service.type "ClusterIP" }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "kubesftp.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit sftp://127.0.0.1:2222 to use your SFTP server"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 2222:22
+{{- end }}
+
+{{- if .Values.sftpUsers }}
+2. Connect to the SFTP server using:
+{{- $firstUser := index .Values.sftpUsers 0 }}
+{{- $username := (split ":" $firstUser)._0 }}
+   sftp -P {{ .Values.service.port }} {{ $username }}@<SERVICE_IP>
+
+3. SFTP Users configured:
+{{- range .Values.sftpUsers }}
+{{- $parts := split ":" . }}
+   - Username: {{ $parts._0 }}, UID: {{ $parts._2 }}, GID: {{ $parts._3 }}
+{{- end }}
+{{- else }}
+
+2. WARNING: No SFTP users configured!
+   You must configure users in values.sftpUsers before the server will be functional.
+   Format: username:password:uid:gid:directory
+   Example: "alice:strongpassword:1001:100:upload"
+{{- end }}
+
+{{- if .Values.persistence.enabled }}
+
+4. Persistent storage is enabled. Data will be stored in:
+   PVC: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "kubesftp.fullname" .)) }}
+{{- else }}
+
+4. WARNING: Persistence is disabled. Data will be lost when pods are terminated.
+{{- end }}
+
+{{- if not (or .Values.sshHostKeys.rsa .Values.sshHostKeys.dsa .Values.sshHostKeys.ecdsa .Values.sshHostKeys.ed25519) }}
+
+5. NOTE: SSH host keys will be auto-generated on container start. 
+   For production use, consider providing persistent host keys via values.sshHostKeys.
+{{- end }}
