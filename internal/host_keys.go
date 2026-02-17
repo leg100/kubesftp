@@ -32,16 +32,6 @@ func getOrCreateHostKeys(
 	client secretsClient,
 	prefix string,
 ) ([]string, error) {
-	//restCfg, err := rest.InClusterConfig()
-	//if err != nil {
-	//	return fmt.Errorf("building in-cluster config: %w", err)
-	//}
-	//client, err := kubernetes.NewForConfig(restCfg)
-	//if err != nil {
-	//	return fmt.Errorf("creating kubernetes client: %w", err)
-	//}
-	//secrets := client.CoreV1().Secrets(cfg.Namespace)
-
 	secret, err := client.Get(ctx, cfg.HostKeysSecret, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		return generateHostKeysAndCreateSecret(ctx, logger, client, cfg.HostKeysSecret, prefix)
