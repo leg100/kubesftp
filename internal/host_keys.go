@@ -57,11 +57,6 @@ func getOrCreateHostKeys(
 }
 
 func generateHostKeysAndCreateSecret(ctx context.Context, logger slog.Logger, client secretsClient, name string, prefix string) ([]string, error) {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-	}
 	cmd := exec.CommandContext(ctx, "ssh-keygen", "-A", "-f", prefix)
 	if err := cmd.Run(); err != nil {
 		return nil, err
@@ -70,7 +65,12 @@ func generateHostKeysAndCreateSecret(ctx context.Context, logger slog.Logger, cl
 	if err != nil {
 		return nil, err
 	}
-	secret.Data = make(map[string][]byte, len(paths))
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Data: make(map[string][]byte, len(paths)),
+	}
 	for _, path := range paths {
 		key, err := os.ReadFile(path)
 		if err != nil {

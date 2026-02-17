@@ -92,6 +92,9 @@ func TestGetOrCreateHostKeys_SecretNotFound(t *testing.T) {
 	// Returned paths must match exactly what was stored in the secret.
 	assert.ElementsMatch(t, paths, maps.Keys(createdSecret.Data))
 
+	// Should be 6 keys: 3 pub and priv keys for 3 diff algos
+	assert.Len(t, paths, 6)
+
 	// Every path must exist on disk and be located inside the prefix.
 	for _, p := range paths {
 		assert.FileExists(t, p)
