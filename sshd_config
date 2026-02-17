@@ -1,0 +1,21 @@
+AuthorizedKeysFile	/etc/ssh/authorized_keys/%u
+
+# override default of no subsystems
+Subsystem	sftp	/usr/lib/ssh/sftp-server
+
+# Example of overriding settings on a per-user basis
+#Match User anoncvs
+#	X11Forwarding no
+#	AllowTcpForwarding no
+#	PermitTTY no
+#	ForceCommand cvs server
+#
+Match Group sftponly
+	#ChrootDirectory /jail/%u
+	#ForceCommand internal-sftp -l VERBOSE -e
+	Subsystem sftp internal-sftp
+	AllowTcpForwarding no
+	X11Forwarding no
+	PasswordAuthentication no
+
+#-u 0666 -p realpath,open,write,close,lstat

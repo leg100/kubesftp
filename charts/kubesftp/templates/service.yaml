@@ -1,13 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "kubesftp.fullname" . }}
-  labels:
-    {{- include "kubesftp.labels" . | nindent 4 }}
-  {{- with .Values.service.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+  name: sftp
 spec:
   type: {{ .Values.service.type }}
   {{- if .Values.service.loadBalancerIP }}

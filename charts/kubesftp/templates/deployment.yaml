@@ -25,6 +25,17 @@ spec:
       serviceAccountName: {{ include "kubesftp.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+      - name: host-keys
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        command: ["/usr/local/bin/kubesftp"]
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: HOST_KEY_SECRET
+          value: {{ .Values.hostKeySecret | default (printf "%s-host-keys" (include "kubesftp.fullname" .)) }}
       containers:
       - name: {{ .Chart.Name }}
         securityContext:
@@ -50,30 +61,10 @@ spec:
         volumeMounts:
         - name: sftp-data
           mountPath: /home
-        {{- if .Values.sshHostKeys.rsa }}
-        - name: host-keys
-          mountPath: /etc/ssh/ssh_host_rsa_key
-          subPath: ssh_host_rsa_key
-          readOnly: true
-        {{- end }}
-        {{- if .Values.sshHostKeys.dsa }}
-        - name: host-keys
-          mountPath: /etc/ssh/ssh_host_dsa_key
-          subPath: ssh_host_dsa_key
-          readOnly: true
-        {{- end }}
-        {{- if .Values.sshHostKeys.ecdsa }}
-        - name: host-keys
-          mountPath: /etc/ssh/ssh_host_ecdsa_key
-          subPath: ssh_host_ecdsa_key
-          readOnly: true
-        {{- end }}
-        {{- if .Values.sshHostKeys.ed25519 }}
         - name: host-keys
           mountPath: /etc/ssh/ssh_host_ed25519_key
           subPath: ssh_host_ed25519_key
           readOnly: true
-        {{- end }}
         {{- if .Values.sftpUsers }}
         args:
           {{- range .Values.sftpUsers }}
@@ -88,12 +79,10 @@ spec:
         {{- else }}
         emptyDir: {}
         {{- end }}
-      {{- if or .Values.sshHostKeys.rsa .Values.sshHostKeys.dsa .Values.sshHostKeys.ecdsa .Values.sshHostKeys.ed25519 }}
       - name: host-keys
         secret:
-          secretName: {{ include "kubesftp.fullname" . }}-host-keys
+          secretName: {{ .Values.hostKeySecret | default (printf "%s-host-keys" (include "kubesftp.fullname" .)) }}
           defaultMode: 0600
-      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
