@@ -25,6 +25,12 @@ func Run() error {
 	}
 	secrets := k8s.CoreV1().Secrets(cfg.Namespace)
 
-	_, err = getOrCreateHostKeys(context.Background(), *slog.Default(), cfg, secrets, "")
+	g := &generator{
+		logger:  slog.New(nil),
+		secrets: secrets,
+		config:  cfg,
+	}
+	g.generate(context.Background())
+
 	return err
 }

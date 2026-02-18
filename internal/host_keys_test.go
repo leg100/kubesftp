@@ -48,8 +48,12 @@ func TestGetOrCreateHostKeys_SecretExists(t *testing.T) {
 		},
 	}
 
-	cfg := config{HostKeysSecret: "host-keys"}
-	paths, err := getOrCreateHostKeys(context.Background(), slog.Logger{}, cfg, client, "")
+	g := &generator{
+		secrets: client,
+		logger:  slog.New(slog.DiscardHandler),
+		config:  config{HostKeysSecret: "host-keys"},
+	}
+	paths, err := g.getOrCreateHostKeys(t.Context(), "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{keyPath}, paths)
 
@@ -80,8 +84,13 @@ func TestGetOrCreateHostKeys_SecretNotFound(t *testing.T) {
 		},
 	}
 
-	cfg := config{HostKeysSecret: "host-keys"}
-	paths, err := getOrCreateHostKeys(context.Background(), slog.Logger{}, cfg, client, prefix)
+	g := &generator{
+		secrets: client,
+		logger:  slog.New(slog.DiscardHandler),
+		config:  config{HostKeysSecret: "host-keys"},
+	}
+
+	paths, err := g.getOrCreateHostKeys(context.Background(), prefix)
 	require.NoError(t, err)
 	require.NotEmpty(t, paths)
 
@@ -111,8 +120,13 @@ func TestGetOrCreateHostKeys_GetError(t *testing.T) {
 		},
 	}
 
-	cfg := config{HostKeysSecret: "host-keys"}
-	_, err := getOrCreateHostKeys(context.Background(), slog.Logger{}, cfg, client, "")
+	g := &generator{
+		secrets: client,
+		logger:  slog.New(slog.DiscardHandler),
+		config:  config{HostKeysSecret: "host-keys"},
+	}
+
+	_, err := g.getOrCreateHostKeys(context.Background(), "")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "getting secret")
 }
