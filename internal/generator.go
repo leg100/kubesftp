@@ -120,7 +120,7 @@ func (g *generator) generateSSHDConfig(hostKeyPaths []string) (string, error) {
 		fmt.Fprintf(&b, "HostKey %s\n", path)
 	}
 	fmt.Fprintf(&b, "AuthorizedKeysFile %s/%%u\n", authorizedKeysDir)
-	fmt.Fprintf(&b, "ChrootDirectory /%s/%%u\n", chrootsDir)
+	fmt.Fprintf(&b, "ChrootDirectory %s/%%u\n", chrootsDir)
 	b.WriteString(`
 ForceCommand internal-sftp -f AUTH -l VERBOSE
 AllowTcpForwarding no
@@ -146,21 +146,23 @@ func (g *generator) setupUsers(ctx context.Context) error {
 func (g *generator) generateCreateUsersScript() (string, error) {
 	var b strings.Builder
 	b.WriteString("set -e\n")
-	b.WriteString("mkdir -p /chroots\n")
+	fmt.Fprintf(&b, "mkdir -p %s\n", chrootsDir)
 	fmt.Fprintf(&b, "mkdir -p %s\n", authorizedKeysDir)
 
 	uid := 4096
 	for username, profile := range g.config.Users {
+		homeDir := filepath.Join(chrootsDir, username, "home", username)
+
 		fmt.Fprintf(&b, "addgroup -g %d %s\n", uid, username)
 		// -D: don't assign a password yet.
 		// -H: don't create the home dir yet.
-		fmt.Fprintf(&b, "adduser -G %s -h /chroots/%[1]s -H -D -u %d -s /sbin/nologin %[1]s\n", username, uid)
+		fmt.Fprintf(&b, "adduser -G %s -h %s -H -D -u %d -s /sbin/nologin %[1]s\n", username, homeDir, uid)
 		// Disable password login
 		fmt.Fprintf(&b, "echo %s:'*' | chpasswd\n", username)
 		// Make their home dir inside chroots
-		fmt.Fprintf(&b, "mkdir -p /chroots/%s/home/%[1]s\n", username)
+		fmt.Fprintf(&b, "mkdir -p %s\n", homeDir)
 		// Make them owner of their home dir.
-		fmt.Fprintf(&b, "chown %s:%[1]s /chroots/%[1]s/home/%[1]s\n", username)
+		fmt.Fprintf(&b, "chown %s:%[1]s %s\n", username, homeDir)
 		for _, key := range profile.AuthorizedKeys {
 			fmt.Fprintf(&b, "echo %s\\n >> %s/%s\n", key, authorizedKeysDir, username)
 		}
