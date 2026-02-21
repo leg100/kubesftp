@@ -1,20 +1,23 @@
 package internal
 
 import (
-	"fmt"
+	"os"
 
+	"github.com/goccy/go-yaml"
 	"github.com/kelseyhightower/envconfig"
 )
 
 type config struct {
 	HostKeysSecret     string      `split_words:"true" required:"true"`
-	HostKeysAlgorithms []algorithm `split_words:"true" required:"true"`
+	HostKeysAlgorithms []algorithm `split_words:"true"`
 	Namespace          string      `envconfig:"pod_namespace" required:"true"`
-	Users              map[string]userInfo
+	Users              []user
+	ConfigFilePath     string `split_words:"true" required:"true"`
 }
 
-type userInfo struct {
-	AuthorizedKeys []string
+type user struct {
+	Username       string
+	AuthorizedKeys []string `json:"authorized_keys"`
 	AllowedHosts   []string
 }
 
@@ -28,18 +31,18 @@ func newDefaultConfig() config {
 	}
 }
 
-func loadConfig() (config, error) {
+func LoadConfig() (config, error) {
 	var cfg config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return config{}, err
 	}
-	return cfg, nil
-}
-
-func loadRequiredEnv(envVars map[string]string, name string) (string, error) {
-	v, ok := envVars[name]
-	if !ok {
-		return "", fmt.Errorf("%s is required", name)
+	configFile, err := os.ReadFile(cfg.ConfigFilePath)
+	if err != nil {
+		return config{}, err
 	}
-	return v, nil
+	if err := yaml.Unmarshal(configFile, &cfg); err != nil {
+		return config{}, err
+	}
+
+	return cfg, nil
 }

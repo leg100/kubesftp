@@ -49,7 +49,7 @@ func containerExec(t *testing.T, ctx context.Context, container testcontainers.C
 // TestGenerateSSHDConfig_Valid uses testcontainers to start an OpenSSH server
 // with the generated sshd_config and verifies that sshd accepts the config.
 func TestGenerateSSHDConfig_Valid(t *testing.T) {
-	g := &generator{
+	g := &Generator{
 		logger: slog.New(slog.DiscardHandler),
 		config: config{
 			HostKeysSecret: "host-keys",
@@ -105,13 +105,15 @@ func TestGenerateSSHDConfig_Valid(t *testing.T) {
 func TestCreateUsers(t *testing.T) {
 	container := startAlpineContainer(t)
 
-	users := map[string]userInfo{
-		"alice": {
+	users := []user{
+		{
+			Username: "alice",
 			AuthorizedKeys: []string{
 				"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlice alice@example.com",
 			},
 		},
-		"bob": {
+		{
+			Username: "bob",
 			AuthorizedKeys: []string{
 				"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBob1 bob@example.com",
 				"ssh-rsa AAAAB3NzaC1yc2EAAAABob2 bob@work.com",
@@ -119,7 +121,7 @@ func TestCreateUsers(t *testing.T) {
 		},
 	}
 
-	g := &generator{
+	g := &Generator{
 		logger: slog.New(slog.DiscardHandler),
 		config: config{
 			Users: users,
@@ -134,39 +136,39 @@ func TestCreateUsers(t *testing.T) {
 	require.Equal(t, 0, code, "createUsers script failed: %s", output)
 
 	// Verify groups were created.
-	for username := range users {
-		code, output := containerExec(t, t.Context(), container, []string{"getent", "group", username})
-		assert.Equal(t, 0, code, "group %s should exist: %s", username, output)
+	for _, user := range users {
+		code, output := containerExec(t, t.Context(), container, []string{"getent", "group", user.Username})
+		assert.Equal(t, 0, code, "group %s should exist: %s", user.Username, output)
 	}
 
 	// Verify users were created with correct properties.
-	for username := range users {
-		code, output := containerExec(t, t.Context(), container, []string{"getent", "passwd", username})
-		assert.Equal(t, 0, code, "user %s should exist", username)
-		assert.Contains(t, output, fmt.Sprintf("/chroots/%s", username), "user %s should have correct home dir", username)
-		assert.Contains(t, output, "/sbin/nologin", "user %s should have nologin shell", username)
+	for _, user := range users {
+		code, output := containerExec(t, t.Context(), container, []string{"getent", "passwd", user.Username})
+		assert.Equal(t, 0, code, "user %s should exist", user.Username)
+		assert.Contains(t, output, fmt.Sprintf("/chroots/%s", user.Username), "user %s should have correct home dir", user.Username)
+		assert.Contains(t, output, "/sbin/nologin", "user %s should have nologin shell", user.Username)
 	}
 
 	// Verify home directories exist and have correct ownership.
-	for username := range users {
-		homeDir := fmt.Sprintf("/chroots/%s/home/%s", username, username)
+	for _, user := range users {
+		homeDir := fmt.Sprintf("/chroots/%s/home/%s", user.Username, user.Username)
 		code, _ := containerExec(t, t.Context(), container, []string{"test", "-d", homeDir})
 		assert.Equal(t, 0, code, "home dir %s should exist", homeDir)
 
 		// Check ownership: stat outputs uid:gid.
 		code, output := containerExec(t, t.Context(), container, []string{"stat", "-c", "%U:%G", homeDir})
 		assert.Equal(t, 0, code)
-		assert.Contains(t, output, fmt.Sprintf("%s:%s", username, username),
-			"home dir should be owned by %s:%s", username, username)
+		assert.Contains(t, output, fmt.Sprintf("%s:%s", user.Username, user.Username),
+			"home dir should be owned by %s:%s", user.Username, user.Username)
 	}
 
 	// Verify authorized_keys files.
-	for username, profile := range users {
-		path := fmt.Sprintf("/etc/ssh/authorized_keys/%s", username)
+	for _, user := range users {
+		path := fmt.Sprintf("/etc/ssh/authorized_keys/%s", user.Username)
 		code, output := containerExec(t, t.Context(), container, []string{"cat", path})
-		assert.Equal(t, 0, code, "authorized_keys file for %s should exist", username)
-		for _, key := range profile.AuthorizedKeys {
-			assert.Contains(t, output, key, "authorized_keys for %s should contain key", username)
+		assert.Equal(t, 0, code, "authorized_keys file for %s should exist", user.Username)
+		for _, key := range user.AuthorizedKeys {
+			assert.Contains(t, output, key, "authorized_keys for %s should contain key", user.Username)
 		}
 	}
 }

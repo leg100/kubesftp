@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -36,24 +37,25 @@ func (f *fakeSecretsClient) Create(ctx context.Context, secret *corev1.Secret, o
 // as paths.
 func TestGetOrCreateHostKeys_SecretExists(t *testing.T) {
 	dir := t.TempDir()
-	keyPath := filepath.Join(dir, "ssh_host_ed25519_key")
+	keyName := "ssh_host_ed25519_key"
+	keyPath := filepath.Join(dir, sshDir, "ssh_host_ed25519_key")
 	keyContent := []byte("fake-private-key")
 
 	client := &fakeSecretsClient{
 		getFunc: func(_ context.Context, _ string, _ metav1.GetOptions) (*corev1.Secret, error) {
 			return &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "host-keys"},
-				Data:       map[string][]byte{keyPath: keyContent},
+				Data:       map[string][]byte{keyName: keyContent},
 			}, nil
 		},
 	}
 
-	g := &generator{
-		secrets: client,
-		logger:  slog.New(slog.DiscardHandler),
-		config:  config{HostKeysSecret: "host-keys"},
+	g := &hostKeys{
+		secrets:    client,
+		logger:     slog.New(slog.DiscardHandler),
+		secretName: "host-keys",
 	}
-	paths, err := g.getOrCreateHostKeys(t.Context(), "")
+	paths, err := g.getOrCreate(t.Context(), dir)
 	require.NoError(t, err)
 	assert.Equal(t, []string{keyPath}, paths)
 
@@ -62,21 +64,22 @@ func TestGetOrCreateHostKeys_SecretExists(t *testing.T) {
 	assert.Equal(t, keyContent, got)
 }
 
-// TestGetOrCreateHostKeys_SecretNotFound verifies that when the secret does not
+// TestHostKeys_SecretNotFound verifies that when the secret does not
 // exist, ssh-keygen is invoked, a new secret is created containing the
 // generated keys, and the key file paths are returned.
-func TestGetOrCreateHostKeys_SecretNotFound(t *testing.T) {
-	if _, err := exec.LookPath("ssh-keygen"); err != nil {
-		t.Skip("ssh-keygen not available")
-	}
-
+func TestHostKeys_SecretNotFound(t *testing.T) {
 	prefix := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(prefix, "etc", "ssh"), 0o755))
 
 	var createdSecret *corev1.Secret
 	client := &fakeSecretsClient{
 		getFunc: func(_ context.Context, name string, _ metav1.GetOptions) (*corev1.Secret, error) {
-			return nil, errors.NewNotFound(schema.GroupResource{Resource: "secrets"}, name)
+			// Retrun secret if it has been created, otherwise return not found.
+			if createdSecret != nil {
+				return createdSecret, nil
+			} else {
+				return nil, errors.NewNotFound(schema.GroupResource{Resource: "secrets"}, name)
+			}
 		},
 		createFunc: func(_ context.Context, secret *corev1.Secret, _ metav1.CreateOptions) (*corev1.Secret, error) {
 			createdSecret = secret
@@ -84,27 +87,36 @@ func TestGetOrCreateHostKeys_SecretNotFound(t *testing.T) {
 		},
 	}
 
-	g := &generator{
-		secrets: client,
-		logger:  slog.New(slog.DiscardHandler),
-		config:  config{HostKeysSecret: "host-keys"},
+	g := &hostKeys{
+		secrets:    client,
+		logger:     slog.New(slog.DiscardHandler),
+		secretName: "host-keys",
 	}
 
-	paths, err := g.getOrCreateHostKeys(context.Background(), prefix)
+	paths, err := g.getOrCreate(t.Context(), prefix)
 	require.NoError(t, err)
 	require.NotEmpty(t, paths)
+	filenames := make([]string, len(paths))
+	for i, path := range paths {
+		filenames[i] = filepath.Base(path)
+	}
 
 	require.NotNil(t, createdSecret)
 	assert.Equal(t, "host-keys", createdSecret.Name)
 	assert.NotEmpty(t, createdSecret.Data)
 
-	// Returned paths must match exactly what was stored in the secret.
-	assert.ElementsMatch(t, paths, maps.Keys(createdSecret.Data))
+	// Retrieve paths of private keys from secret.
+	secretPrivateKeyPaths := slices.DeleteFunc(
+		maps.Keys(createdSecret.Data),
+		func(path string) bool { return strings.HasSuffix(path, ".pub") },
+	)
+	// Ensure that they match the filenames returned by the func under test.
+	assert.ElementsMatch(t, filenames, secretPrivateKeyPaths)
 
-	// Should be 6 keys: 3 pub and priv keys for 3 diff algos
-	assert.Len(t, paths, 6)
+	// Should be 3 private keys
+	assert.Len(t, paths, 3)
 
-	// Every path must exist on disk and be located inside the prefix.
+	// Every private key path must exist on disk and be located inside the prefix.
 	for _, p := range paths {
 		assert.FileExists(t, p)
 		assert.Contains(t, p, prefix)
@@ -120,13 +132,13 @@ func TestGetOrCreateHostKeys_GetError(t *testing.T) {
 		},
 	}
 
-	g := &generator{
-		secrets: client,
-		logger:  slog.New(slog.DiscardHandler),
-		config:  config{HostKeysSecret: "host-keys"},
+	g := &hostKeys{
+		secrets:    client,
+		logger:     slog.New(slog.DiscardHandler),
+		secretName: "host-keys",
 	}
 
-	_, err := g.getOrCreateHostKeys(context.Background(), "")
+	_, err := g.getOrCreate(t.Context(), "")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "getting secret")
+	assert.Contains(t, err.Error(), "retrieving secret")
 }

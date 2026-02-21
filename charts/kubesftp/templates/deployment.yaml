@@ -26,16 +26,35 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
-      - name: host-keys
+      - name: generator
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-        command: ["/usr/local/bin/kubesftp"]
+        command:
+          - sh
+        args:
+          - -c
+          - |
+            /usr/local/bin/generator
+            cp -a /etc/ssh /mnt/etc
+            cp /etc/passwd /mnt/etc
+            cp /etc/shadow /mnt/etc
+            cp /etc/group /mnt/etc
         env:
         - name: POD_NAMESPACE
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: HOST_KEY_SECRET
-          value: {{ .Values.hostKeySecret | default (printf "%s-host-keys" (include "kubesftp.fullname" .)) }}
+        - name: HOST_KEYS_SECRET
+          value: {{ .Values.hostKeysSecret | default (printf "%s-host-keys" (include "kubesftp.fullname" .)) }}
+        - name: CONFIG_FILE_PATH
+          value: /config/config.yaml
+        volumeMounts:
+        - name: etc
+          mountPath: /mnt/etc
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: chroots
+          mountPath: /chroots
       containers:
       - name: {{ .Chart.Name }}
         securityContext:
@@ -46,43 +65,31 @@ spec:
         - name: ssh
           containerPort: 22
           protocol: TCP
-        livenessProbe:
-          tcpSocket:
-            port: ssh
-          initialDelaySeconds: 30
-          periodSeconds: 10
-        readinessProbe:
-          tcpSocket:
-            port: ssh
-          initialDelaySeconds: 5
-          periodSeconds: 5
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
         volumeMounts:
-        - name: sftp-data
-          mountPath: /home
-        - name: host-keys
-          mountPath: /etc/ssh/ssh_host_ed25519_key
-          subPath: ssh_host_ed25519_key
-          readOnly: true
-        {{- if .Values.sftpUsers }}
-        args:
-          {{- range .Values.sftpUsers }}
-          - {{ . | quote }}
-          {{- end }}
-        {{- end }}
+        - name: etc
+          mountPath: /etc/ssh
+          subPath: ssh
+        - name: etc
+          mountPath: /etc/passwd
+          subPath: passwd
+        - name: etc
+          mountPath: /etc/shadow
+          subPath: shadow
+        - name: etc
+          mountPath: /etc/group
+          subPath: group
+        - name: chroots
+          mountPath: /chroots
       volumes:
-      - name: sftp-data
-        {{- if .Values.persistence.enabled }}
-        persistentVolumeClaim:
-          claimName: {{ .Values.persistence.existingClaim | default (printf "%s-data" (include "kubesftp.fullname" .)) }}
-        {{- else }}
+      - name: config
+        configMap:
+          name: {{ include "kubesftp.fullname" . }}
+      - name: etc
         emptyDir: {}
-        {{- end }}
-      - name: host-keys
-        secret:
-          secretName: {{ .Values.hostKeySecret | default (printf "%s-host-keys" (include "kubesftp.fullname" .)) }}
-          defaultMode: 0600
+      - name: chroots
+        emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

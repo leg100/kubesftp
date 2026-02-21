@@ -10,7 +10,7 @@ import (
 )
 
 func Run() error {
-	cfg, err := loadConfig()
+	cfg, err := LoadConfig()
 	if err != nil {
 		return err
 	}
@@ -25,12 +25,8 @@ func Run() error {
 	}
 	secrets := k8s.CoreV1().Secrets(cfg.Namespace)
 
-	g := &generator{
-		logger:  slog.New(nil),
-		secrets: secrets,
-		config:  cfg,
-	}
-	g.generate(context.Background())
+	g := NewGenerator(slog.Default(), secrets, cfg)
+	g.Generate(context.Background())
 
 	return err
 }

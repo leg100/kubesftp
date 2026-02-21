@@ -1,10 +1,10 @@
 replicaCount: 1
 
 image:
-  repository: atmoz/sftp
+  repository: kubesftp
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "alpine"
+  tag: "edge"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -21,10 +21,7 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext:
-  fsGroup: 100
-  runAsUser: 100
-  runAsGroup: 100
+podSecurityContext: {}
 
 securityContext:
   capabilities:
@@ -42,10 +39,10 @@ service:
   annotations: {}
 
 # SFTP users configuration
-# Format: username:password:uid:gid:directory
-# Example: "foo:strongpassword:1001:100:upload"
-# NOTE: You must set secure credentials before deploying.
-sftpUsers: []
+users:
+  - username: bob
+    authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJcv4iIMYaVC2Vw7uIaDvDv38yO9LT6aIpJMY5Xje1zb louis@tower
 
 # Persistence configuration
 persistence:
@@ -59,7 +56,7 @@ persistence:
 # SSH host keys secret name override.
 # If not set, defaults to {{ fullname }}-host-keys.
 # The init container creates this secret automatically if it does not exist.
-# hostKeySecret: ""
+hostKeysSecret: ~
 
 resources: {}
   # We usually recommend not to specify default resources and to leave this as a conscious
