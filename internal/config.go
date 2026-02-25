@@ -15,12 +15,6 @@ type config struct {
 	ConfigFilePath     string `split_words:"true" required:"true"`
 }
 
-type user struct {
-	Username       string
-	AuthorizedKeys []string `json:"authorized_keys"`
-	AllowedHosts   []string
-}
-
 func newDefaultConfig() config {
 	return config{
 		HostKeysAlgorithms: []algorithm{

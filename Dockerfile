@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.23.3
 
 RUN --mount=type=cache,target=/etc/apk/cache \
-  apk add --no-cache --upgrade openssh gcompat
+  apk add --no-cache --upgrade openssh gcompat syslog-ng
 
 USER root
 

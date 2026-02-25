@@ -172,3 +172,39 @@ func TestCreateUsers(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateSyslogConfig(t *testing.T) {
+
+	g := &Generator{
+		logger: slog.New(slog.DiscardHandler),
+		config: config{
+			Users: []user{
+				{
+					Username: "alice",
+					AuthorizedKeys: []string{
+						"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlice alice@example.com",
+					},
+				},
+				{
+					Username: "bob",
+					AuthorizedKeys: []string{
+						"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBob1 bob@example.com",
+						"ssh-rsa AAAAB3NzaC1yc2EAAAABob2 bob@work.com",
+					},
+				},
+			},
+		},
+	}
+	got := g.generateSyslogConfig()
+	want := `set -e
+@version: 4.10
+@include "scl.conf"
+source sftp {
+  unix-dgram("/chroots/alice/dev/log");
+  unix-dgram("/chroots/bob/dev/log");
+};
+destination sftp { stdout(template("${ISODATE} ${PROGRAM} ${PID} ${MESSAGE}\n")); };
+log { source(sftp); destination(sftp); };
+`
+	assert.Equal(t, want, got)
+}

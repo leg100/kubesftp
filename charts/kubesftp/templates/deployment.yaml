@@ -33,11 +33,13 @@ spec:
         args:
           - -c
           - |
+            set -e
             /usr/local/bin/generator
             cp -a /etc/ssh /mnt/etc
             cp /etc/passwd /mnt/etc
             cp /etc/shadow /mnt/etc
             cp /etc/group /mnt/etc
+            cp -a /etc/syslog-ng /mnt/etc
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -47,6 +49,7 @@ spec:
           value: {{ .Values.hostKeysSecret | default (printf "%s-host-keys" (include "kubesftp.fullname" .)) }}
         - name: CONFIG_FILE_PATH
           value: /config/config.yaml
+        restartPolicy: Never
         volumeMounts:
         - name: etc
           mountPath: /mnt/etc
@@ -55,6 +58,22 @@ spec:
           readOnly: true
         - name: chroots
           mountPath: /chroots
+      - name: logger
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        command:
+          - sh
+          - -c
+        args:
+          - |
+            /usr/sbin/syslog-ng -F -e
+            sleep infinity
+        restartPolicy: Always
+        volumeMounts:
+        - name: chroots
+          mountPath: /chroots
+        - name: etc
+          mountPath: /etc/syslog-ng
+          subPath: syslog-ng
       containers:
       - name: {{ .Chart.Name }}
         securityContext:

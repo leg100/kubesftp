@@ -26,7 +26,9 @@ func Run() error {
 	secrets := k8s.CoreV1().Secrets(cfg.Namespace)
 
 	g := NewGenerator(slog.Default(), secrets, cfg)
-	g.Generate(context.Background())
+	if err := g.Generate(context.Background()); err != nil {
+		return err
+	}
 
 	return err
 }

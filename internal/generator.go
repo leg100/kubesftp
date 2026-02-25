@@ -43,12 +43,19 @@ func (g *Generator) Generate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("retrieving host keys: %w", err)
 	}
+
 	if err := g.writeSSHDConfig(paths); err != nil {
 		return fmt.Errorf("generating sshd config: %w", err)
 	}
 	g.logger.Info("generated sshd config", "path", sshdConfigPath)
+
 	if err := g.setupUsers(ctx); err != nil {
 		return fmt.Errorf("setting up users: %w", err)
+	}
+
+	syslogConfig := g.generateSyslogConfig()
+	if err := os.WriteFile("/etc/syslog-ng/syslog-ng.conf", []byte(syslogConfig), 0o644); err != nil {
+		return fmt.Errorf("writing syslog config: %w", err)
 	}
 	return nil
 }
@@ -60,7 +67,6 @@ func (g *Generator) writeSSHDConfig(hostKeyPaths []string) error {
 	}
 	if err := os.WriteFile(sshdConfigPath, []byte(config), 0o644); err != nil {
 		return err
-		return fmt.Errorf("setting up users: %w", err)
 	}
 	return nil
 }
@@ -88,8 +94,9 @@ func (g *Generator) setupUsers(ctx context.Context) error {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, "sh", "-c", script)
-	if err := cmd.Run(); err != nil {
-		return err
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s: %w", string(out), err)
 	}
 	return nil
 }
@@ -104,23 +111,51 @@ func (g *Generator) generateCreateUsersScript() (string, error) {
 	uid := 4096
 	for _, user := range g.config.Users {
 		username := user.Username
-		homeDir := filepath.Join(chrootsDir, username, "home", username)
 
 		fmt.Fprintf(&b, "addgroup -g %d %s\n", uid, username)
 		// -D: don't assign a password yet.
 		// -H: don't create the home dir yet.
-		fmt.Fprintf(&b, "adduser -G %s -h %s -H -D -u %d -s /sbin/nologin %[1]s\n", username, homeDir, uid)
+		fmt.Fprintf(&b, "adduser -G %s -h %s -H -D -u %d -s /sbin/nologin %[1]s\n", username, user.homeDir(), uid)
 		// Disable password login
 		fmt.Fprintf(&b, "echo %s:'*' | chpasswd\n", username)
 		// Make their home dir inside chroots
-		fmt.Fprintf(&b, "mkdir -p %s\n", homeDir)
+		fmt.Fprintf(&b, "mkdir -p %s\n", user.chrootHomeDir())
 		// Make them owner of their home dir.
-		fmt.Fprintf(&b, "chown %s:%[1]s %s\n", username, homeDir)
+		fmt.Fprintf(&b, "chown %s:%[1]s %s\n", username, user.chrootHomeDir())
 		for _, key := range user.AuthorizedKeys {
 			fmt.Fprintf(&b, "echo %s\\n >> %s/%s\n", key, authorizedKeysDir, username)
 		}
+		// Create the dev directory for their log device
+		fmt.Fprintf(&b, "mkdir -p %s\n", filepath.Dir(user.devLogPath()))
+		fmt.Fprintf(&b, "chmod 755 %s\n", filepath.Dir(user.devLogPath()))
 		uid++
+		g.logger.Info("created user account", "username", user, "home", user.homeDir(), "chroot", user.chrootDir())
 	}
 
 	return b.String(), nil
+}
+
+func (g *Generator) generateSyslogConfig() string {
+	var b strings.Builder
+
+	b.WriteString("@version: 4.10\n")
+	b.WriteString("@include \"scl.conf\"\n")
+	b.WriteString("options {ts-format(iso) ; };")
+
+	for _, user := range g.config.Users {
+		fmt.Fprintf(&b, "source %v {\n", user)
+		fmt.Fprintf(&b, "  unix-dgram(\"%s\");\n", user.devLogPath())
+		b.WriteString("};\n")
+		b.WriteString("log {\n")
+		fmt.Fprintf(&b, " source(%v);\n", user)
+		b.WriteString("  filter{program(\"internal-sftp\");};\n")
+		fmt.Fprintf(&b, " destination { stdout(persist-name(\"%v-stdout\") template(\"$(format-json level=${PRIORITY} program=${PROGRAM} pid=${PID} msg=${MESSAGE} date=${ISODATE} user=%v)\n\")); };", user, user)
+		fmt.Fprintf(&b, " destination { unix-dgram(\"%s\" persist-name(\"%v-unix\") template(\"$(format-json level=${PRIORITY} program=${PROGRAM} pid=${PID} msg=${MESSAGE} date=${ISODATE} user=%v)\n\")); };", user, user)
+		b.WriteString("};\n")
+	}
+
+	fmt.Fprintf(&b, "destination sftp { stdout(template(\"${ISODATE} ${PROGRAM} ${PID} ${MESSAGE}\\n\")); };\n")
+	b.WriteString("log { source(sftp); destination(sftp); };\n")
+
+	return b.String()
 }
