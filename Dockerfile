@@ -21,5 +21,6 @@ USER root
 
 COPY entrypoint.sh /
 COPY --from=0 /src/_build/linux/amd64/generator /usr/local/bin/
+COPY --from=0 /src/_build/linux/amd64/monitor /usr/local/bin/
 
 ENTRYPOINT ["/entrypoint.sh"]

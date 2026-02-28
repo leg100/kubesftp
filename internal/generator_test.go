@@ -49,7 +49,7 @@ func containerExec(t *testing.T, ctx context.Context, container testcontainers.C
 // TestGenerateSSHDConfig_Valid uses testcontainers to start an OpenSSH server
 // with the generated sshd_config and verifies that sshd accepts the config.
 func TestGenerateSSHDConfig_Valid(t *testing.T) {
-	g := &Generator{
+	g := &generator{
 		logger: slog.New(slog.DiscardHandler),
 		config: config{
 			HostKeysSecret: "host-keys",
@@ -121,10 +121,11 @@ func TestCreateUsers(t *testing.T) {
 		},
 	}
 
-	g := &Generator{
+	g := &generator{
 		logger: slog.New(slog.DiscardHandler),
 		config: config{
-			Users: users,
+			Users:      users,
+			ChrootsDir: "/chroots",
 		},
 	}
 
@@ -145,7 +146,7 @@ func TestCreateUsers(t *testing.T) {
 	for _, user := range users {
 		code, output := containerExec(t, t.Context(), container, []string{"getent", "passwd", user.Username})
 		assert.Equal(t, 0, code, "user %s should exist", user.Username)
-		assert.Contains(t, output, fmt.Sprintf("/chroots/%s", user.Username), "user %s should have correct home dir", user.Username)
+		assert.Contains(t, output, user.homeDir(), "user %s should have correct home dir", user.Username)
 		assert.Contains(t, output, "/sbin/nologin", "user %s should have nologin shell", user.Username)
 	}
 
@@ -171,40 +172,4 @@ func TestCreateUsers(t *testing.T) {
 			assert.Contains(t, output, key, "authorized_keys for %s should contain key", user.Username)
 		}
 	}
-}
-
-func TestGenerateSyslogConfig(t *testing.T) {
-
-	g := &Generator{
-		logger: slog.New(slog.DiscardHandler),
-		config: config{
-			Users: []user{
-				{
-					Username: "alice",
-					AuthorizedKeys: []string{
-						"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlice alice@example.com",
-					},
-				},
-				{
-					Username: "bob",
-					AuthorizedKeys: []string{
-						"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBob1 bob@example.com",
-						"ssh-rsa AAAAB3NzaC1yc2EAAAABob2 bob@work.com",
-					},
-				},
-			},
-		},
-	}
-	got := g.generateSyslogConfig()
-	want := `set -e
-@version: 4.10
-@include "scl.conf"
-source sftp {
-  unix-dgram("/chroots/alice/dev/log");
-  unix-dgram("/chroots/bob/dev/log");
-};
-destination sftp { stdout(template("${ISODATE} ${PROGRAM} ${PID} ${MESSAGE}\n")); };
-log { source(sftp); destination(sftp); };
-`
-	assert.Equal(t, want, got)
 }

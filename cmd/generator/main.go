@@ -40,10 +40,8 @@ func run(ctx context.Context) error {
 	}
 	secrets := k8s.CoreV1().Secrets(cfg.Namespace)
 
-	g := internal.NewGenerator(slog.Default(), secrets, cfg)
-	if err := g.Generate(ctx); err != nil {
+	if err := internal.Generate(ctx, slog.Default(), secrets, cfg); err != nil {
 		return err
 	}
-
 	return nil
 }

@@ -1,0 +1,9 @@
+users:
+  - authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJcv4iIMYaVC2Vw7uIaDvDv38yO9LT6aIpJMY5Xje1zb
+        louis@tower
+    username: bob
+  - authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJcv4iIMYaVC2Vw7uIaDvDv38yO9LT6aIpJMY5Xje1zb
+        louis@tower
+    username: alice

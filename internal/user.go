@@ -18,18 +18,17 @@ func (u user) homeDir() string {
 	return filepath.Join("/home", u.Username)
 }
 
-// chrootHomeDir is the host's path to the user's home directory, i.e. the path
-// outside of the chroot.
-func (u user) chrootHomeDir() string {
-	return filepath.Join(u.chrootDir(), "home", u.Username)
+// chrootDir is the path to the user's dedicated chroot.
+func (u user) chrootDir(chrootsParentDir string) string {
+	return filepath.Join(chrootsParentDir, u.Username)
 }
 
-// chrootDir is the path to the user's dedicated chroot.
-func (u user) chrootDir() string {
-	return filepath.Join(chrootsDir, u.Username)
+// chrootHomeDir is the host's path to the user's home directory.
+func (u user) chrootHomeDir(chrootsParentDir string) string {
+	return filepath.Join(u.chrootDir(chrootsParentDir), "home", u.Username)
 }
 
 // devLogPath is the full host path to the user's log device.
-func (u user) devLogPath() string {
-	return filepath.Join(u.chrootDir(), "dev", "log")
+func (u user) devLogPath(chrootsParentDir string) string {
+	return filepath.Join(u.chrootDir(chrootsParentDir), "dev", "log")
 }

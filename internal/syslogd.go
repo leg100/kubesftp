@@ -2,50 +2,58 @@ package internal
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	"github.com/leodido/go-syslog/v4/rfc3164"
+	"golang.org/x/sync/errgroup"
 )
-
-const sftpLogs1 = `<38>Feb 23 20:31:22 sshd-session[2237381]: Changed root directory to "/srv/sftp/jail/alice"`
-const sftpLogs2 = `<38>Feb 23 20:31:22 sshd-session [2237381]: Starting session: subsystem 'sftp' for alice from ::1 port 51234 id 0`
-const sftpLogs3 = `<38>Feb 23 20:31:22 internal-sftp[2237382]: session opened for local user alice from [::1]`
-const sftpLogs4 = `<38>Feb 23 20:31:22 internal-sftp[2237382]: received client version 3`
-const sftpLogs5 = `<38>Feb 23 20:31:22 internal-sftp[2237382]: realpath "."`
-
-//i := []byte(`<165>4 2018-10-11T22:14:15.003Z mymach.it e - 1 [ex@32473 iut="3"] An application event log entry...`)
-//p := rfc5424.NewParser()
-//_, _ = p.Parse(i)
 
 // syslogd aggregates and relays syslog messages from a user's chroot.
 type syslogd struct {
-	user     user
-	dests    []io.Writer
-	listener net.Listener
+	user      user
+	receivers []syslogdReceiver
+	listener  net.Listener
 }
 
-func newSyslogd(user user, dests ...io.Writer) (*syslogd, error) {
+type syslogdReceiver interface {
+	receive(message)
+}
+
+type message struct {
+	Timestamp *time.Time
+	Appname   string
+	PID       int
+	Message   string
+	User      user
+	Level     string
+}
+
+func newSyslogd(chrootsParentDir string, user user, dests ...syslogdReceiver) (*syslogd, error) {
 	// Remove existing socket file if it exists
-	if err := os.RemoveAll(user.devLogPath()); err != nil {
+	if err := os.RemoveAll(user.devLogPath(chrootsParentDir)); err != nil {
 		return nil, fmt.Errorf("failed to remove existing socket: %w", err)
 	}
-	listener, err := net.Listen("unix", user.devLogPath())
+	listener, err := net.Listen("unix", user.devLogPath(chrootsParentDir))
 	if err != nil {
 		return nil, err
 	}
+	if err := os.Chmod(user.devLogPath(chrootsParentDir), 0o666); err != nil {
+		return nil, err
+	}
 	return &syslogd{
-		user:     user,
-		dests:    dests,
-		listener: listener,
+		user:      user,
+		receivers: dests,
+		listener:  listener,
 	}, nil
 }
 
-func (s *syslogd) accept(ctx context.Context) error {
+func (s *syslogd) accept(ctx context.Context, g *errgroup.Group) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,16 +64,13 @@ func (s *syslogd) accept(ctx context.Context) error {
 				if ctx.Err() != nil {
 					return nil
 				}
-				// Check if listener is closed
-				//if isClosedError(err) {
-				//	return nil
-				//}
-				log.Printf("Unix socket accept error: %v", err)
-				return nil
+				return err
 			}
 
-			//s.wg.Add(1)
-			go s.handleUnix(ctx, conn)
+			g.Go(func() error {
+				s.handleUnix(ctx, conn)
+				return nil
+			})
 		}
 	}
 }
@@ -75,40 +80,63 @@ func (s *syslogd) handleUnix(ctx context.Context, conn net.Conn) {
 	//defer s.wg.Done()
 	defer conn.Close()
 
-	reader := bufio.NewReader(conn)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			line, err := reader.ReadBytes('\n')
-			if err != nil {
-				if err != io.EOF {
-					log.Printf("Unix socket read error: %v", err)
-				}
-				return
-			}
-
-			if len(line) > 0 {
-				s.processMessage(line)
-			}
+	reader := bufio.NewScanner(conn)
+	reader.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
 		}
+		if i := bytes.IndexByte(data, 0); i >= 0 {
+			// We have a full null-terminated line.
+			return i + 1, dropNull(data[0:i]), nil
+		}
+		// If we're at EOF, we have a final, non-terminated line. Return it.
+		if atEOF {
+			return len(data), dropNull(data), nil
+		}
+		// Request more data.
+		return 0, nil, nil
+	})
+
+	for reader.Scan() {
+		if err := reader.Err(); err != nil {
+			log.Printf("received reader err: %v\n", err)
+			return
+		}
+		//log.Printf("received line: %v\n", reader.Text())
+
+		s.processMessage(reader.Bytes())
 	}
+}
+
+// dropNull drops a terminal NULL from the data.
+func dropNull(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == 0 {
+		return data[0 : len(data)-1]
+	}
+	return data
 }
 
 // processMessage parses and handles a syslog message
 func (s *syslogd) processMessage(data []byte) {
-	parser := rfc3164.NewParser(rfc3164.WithYear(rfc3164.CurrentYear{}))
+	parser := rfc3164.NewParser(rfc3164.WithYear(rfc3164.CurrentYear{}), rfc3164.WithBestEffort())
 	msg, err := parser.Parse(data)
 	if err != nil {
-		log.Printf("Failed to parse message: %v (raw: %s)", err, string(data))
+		log.Printf("Failed to parse message: %v (raw: %s)\n", err, string(data))
 		return
 	}
 	rmsg, ok := msg.(*rfc3164.SyslogMessage)
 	if !ok {
+		log.Println("Not a rfc3164 message")
 		return
 	}
-	for _, dest := range s.dests {
-		fmt.Fprintf(dest, "%v %s %v: %s", rmsg.Timestamp, *rmsg.Appname, s.user, *rmsg.Message)
+	kubemsg := message{
+		Timestamp: rmsg.Timestamp,
+		User:      s.user,
+		Message:   *rmsg.Message,
+		Appname:   *rmsg.Appname,
+		Level:     *msg.SeverityShortLevel(),
+	}
+	for _, dest := range s.receivers {
+		dest.receive(kubemsg)
 	}
 }

@@ -8,11 +8,12 @@ import (
 )
 
 type config struct {
-	HostKeysSecret     string      `split_words:"true" required:"true"`
+	HostKeysSecret     string      `split_words:"true"`
 	HostKeysAlgorithms []algorithm `split_words:"true"`
-	Namespace          string      `envconfig:"pod_namespace" required:"true"`
+	Namespace          string      `envconfig:"pod_namespace"`
 	Users              []user
 	ConfigFilePath     string `split_words:"true" required:"true"`
+	ChrootsDir         string `split_words:"true" default:"/chroots"`
 }
 
 func newDefaultConfig() config {
