@@ -63,3 +63,7 @@ helm-docs:
 .PHONY: helm-lint
 helm-lint:
 	./hack/helm-lint.sh
+
+.PHONY: livereload
+livereload:
+	wgo ./hacks/reload.sh

@@ -11,7 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -140,24 +139,23 @@ func TestHandleUnix(t *testing.T) {
 	socketPath := filepath.Join(tmpDir, "dev", "log")
 	require.NoError(t, os.MkdirAll(filepath.Dir(socketPath), 0o755))
 
-	ln, err := net.Listen("unix", socketPath)
+	addr := &net.UnixAddr{Name: socketPath, Net: "unixgram"}
+	conn, err := net.ListenUnixgram("unixgram", addr)
 	require.NoError(t, err)
-	t.Cleanup(func() { ln.Close() })
 
 	recv := &mockReceiver{}
 	s := &syslogd{
 		user:      user{Username: "alice"},
 		receivers: []syslogdReceiver{recv},
-		listener:  ln,
+		conn:      conn,
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
-	g, ctx := errgroup.WithContext(ctx)
-	go s.accept(ctx, g) //nolint
+	go s.connect(ctx) //nolint
 
-	conn, err := net.Dial("unix", socketPath)
+	conn, err = net.DialUnix("unixgram", nil, addr)
 	require.NoError(t, err)
 	defer conn.Close()
 
@@ -178,26 +176,25 @@ func TestAcceptContextCancellation(t *testing.T) {
 	socketPath := filepath.Join(tmpDir, "dev", "log")
 	require.NoError(t, os.MkdirAll(filepath.Dir(socketPath), 0o755))
 
-	ln, err := net.Listen("unix", socketPath)
+	addr := &net.UnixAddr{Name: socketPath, Net: "unixgram"}
+	conn, err := net.ListenUnixgram("unixgram", addr)
 	require.NoError(t, err)
-	t.Cleanup(func() { ln.Close() })
 
 	s := &syslogd{
-		user:     user{Username: "alice"},
-		listener: ln,
+		user: user{Username: "alice"},
+		conn: conn,
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 
-	g := new(errgroup.Group)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		s.accept(ctx, g)
+		s.connect(ctx)
 	}()
 
 	cancel()
-	ln.Close()
+	conn.Close()
 
 	select {
 	case <-done:

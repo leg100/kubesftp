@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-const sshDir = "/etc/ssh"
+const (
+	sshDir       = "/etc/ssh"
+	etcMountPath = "/mnt/etc"
+)
 
 var (
 	sshdConfigPath    = filepath.Join(sshDir, "sshd_config")
@@ -50,8 +53,12 @@ func (g *generator) generate(ctx context.Context) error {
 	}
 	g.logger.Info("generated sshd config", "path", sshdConfigPath)
 
-	if err := g.setupUsers(ctx); err != nil {
+	if err := g.generateAndRunScript(ctx, g.generateCreateUsersScript); err != nil {
 		return fmt.Errorf("setting up users: %w", err)
+	}
+
+	if err := g.generateAndRunScript(ctx, g.generateCopyPathsScript); err != nil {
+		return fmt.Errorf("copying paths: %w", err)
 	}
 
 	return nil
@@ -80,13 +87,18 @@ ForceCommand internal-sftp -f AUTH -l VERBOSE
 AllowTcpForwarding no
 X11Forwarding no
 PasswordAuthentication no
-Subsystem sftp internal-sftp
+Subsystem sftp internal-sftp -f AUTH -l VERBOSE
+SyslogFacility AUTH
+LogLevel VERBOSE
+
 `)
 	return b.String(), nil
 }
 
-func (g *generator) setupUsers(ctx context.Context) error {
-	script, err := g.generateCreateUsersScript()
+type createScriptFunc func() (string, error)
+
+func (g *generator) generateAndRunScript(ctx context.Context, fn createScriptFunc) error {
+	script, err := fn()
 	if err != nil {
 		return err
 	}
@@ -129,5 +141,15 @@ func (g *generator) generateCreateUsersScript() (string, error) {
 		g.logger.Info("created user account", "username", user, "home", user.homeDir(), "chroot", user.chrootDir(g.config.ChrootsDir))
 	}
 
+	return b.String(), nil
+}
+
+func (g *generator) generateCopyPathsScript() (string, error) {
+	var b strings.Builder
+	b.WriteString("set -e\n")
+	fmt.Fprintf(&b, "cp -a %s %s\n", sshDir, etcMountPath)
+	fmt.Fprintf(&b, "cp /etc/passwd %s\n", etcMountPath)
+	fmt.Fprintf(&b, "cp /etc/shadow %s\n", etcMountPath)
+	fmt.Fprintf(&b, "cp /etc/group %s\n", etcMountPath)
 	return b.String(), nil
 }

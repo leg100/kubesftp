@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"log"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -13,12 +14,9 @@ func StartSyslogDaemons(ctx context.Context, g *errgroup.Group, cfg config, rece
 			return err
 		}
 		g.Go(func() error {
-			return d.accept(ctx, g)
-		})
-		g.Go(func() error {
-			<-ctx.Done()
-			return d.listener.Close()
+			return d.connect(ctx)
 		})
 	}
+	log.Printf("monitoring %d users\n", len(cfg.Users))
 	return nil
 }

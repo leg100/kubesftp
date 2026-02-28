@@ -29,17 +29,7 @@ spec:
       - name: generator
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         command:
-          - sh
-        args:
-          - -c
-          - |
-            set -e
-            /usr/local/bin/generator
-            cp -a /etc/ssh /mnt/etc
-            cp /etc/passwd /mnt/etc
-            cp /etc/shadow /mnt/etc
-            cp /etc/group /mnt/etc
-            cp -a /etc/syslog-ng /mnt/etc
+          - /usr/local/bin/generator
         env:
         - name: POD_NAMESPACE
           valueFrom:
@@ -62,6 +52,9 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         command:
           - /usr/local/bin/monitor
+        env:
+        - name: CONFIG_FILE_PATH
+          value: /config/config.yaml
         restartPolicy: Always
         volumeMounts:
         - name: chroots

@@ -1,9 +1,8 @@
 package internal
 
 import (
-	"bufio"
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,14 +10,13 @@ import (
 	"time"
 
 	"github.com/leodido/go-syslog/v4/rfc3164"
-	"golang.org/x/sync/errgroup"
 )
 
 // syslogd aggregates and relays syslog messages from a user's chroot.
 type syslogd struct {
 	user      user
 	receivers []syslogdReceiver
-	listener  net.Listener
+	conn      *net.UnixConn
 }
 
 type syslogdReceiver interface {
@@ -35,85 +33,44 @@ type message struct {
 }
 
 func newSyslogd(chrootsParentDir string, user user, dests ...syslogdReceiver) (*syslogd, error) {
+	socket := user.devLogPath(chrootsParentDir)
 	// Remove existing socket file if it exists
-	if err := os.RemoveAll(user.devLogPath(chrootsParentDir)); err != nil {
+	if err := os.RemoveAll(socket); err != nil {
 		return nil, fmt.Errorf("failed to remove existing socket: %w", err)
 	}
-	listener, err := net.Listen("unix", user.devLogPath(chrootsParentDir))
+	addr, err := net.ResolveUnixAddr("unixgram", socket)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Chmod(user.devLogPath(chrootsParentDir), 0o666); err != nil {
+	conn, err := net.ListenUnixgram("unixgram", addr)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(socket, 0o666); err != nil {
 		return nil, err
 	}
 	return &syslogd{
 		user:      user,
 		receivers: dests,
-		listener:  listener,
+		conn:      conn,
 	}, nil
 }
 
-func (s *syslogd) accept(ctx context.Context, g *errgroup.Group) error {
+func (s *syslogd) connect(ctx context.Context) error {
+	buf := make([]byte, 1024)
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return nil
-		default:
-			conn, err := s.listener.Accept()
-			if err != nil {
-				if ctx.Err() != nil {
-					return nil
-				}
-				return err
-			}
-
-			g.Go(func() error {
-				s.handleUnix(ctx, conn)
+		}
+		n, _, err := s.conn.ReadFrom(buf)
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
 				return nil
-			})
+			}
+			return err
 		}
+		s.processMessage(buf[:n])
 	}
-}
-
-// handleUnix handles a Unix socket connection
-func (s *syslogd) handleUnix(ctx context.Context, conn net.Conn) {
-	//defer s.wg.Done()
-	defer conn.Close()
-
-	reader := bufio.NewScanner(conn)
-	reader.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		if atEOF && len(data) == 0 {
-			return 0, nil, nil
-		}
-		if i := bytes.IndexByte(data, 0); i >= 0 {
-			// We have a full null-terminated line.
-			return i + 1, dropNull(data[0:i]), nil
-		}
-		// If we're at EOF, we have a final, non-terminated line. Return it.
-		if atEOF {
-			return len(data), dropNull(data), nil
-		}
-		// Request more data.
-		return 0, nil, nil
-	})
-
-	for reader.Scan() {
-		if err := reader.Err(); err != nil {
-			log.Printf("received reader err: %v\n", err)
-			return
-		}
-		//log.Printf("received line: %v\n", reader.Text())
-
-		s.processMessage(reader.Bytes())
-	}
-}
-
-// dropNull drops a terminal NULL from the data.
-func dropNull(data []byte) []byte {
-	if len(data) > 0 && data[len(data)-1] == 0 {
-		return data[0 : len(data)-1]
-	}
-	return data
 }
 
 // processMessage parses and handles a syslog message
