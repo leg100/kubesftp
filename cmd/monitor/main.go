@@ -3,8 +3,7 @@ package main
 import (
 	"context"
 	"log"
-	"net/http"
-	"os"
+	"log/slog"
 	"os/signal"
 	"syscall"
 
@@ -14,14 +13,14 @@ import (
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	// TODO: do we need to defer a cancel?
+	defer cancel()
 	go func() {
 		<-ctx.Done()
 		// Stop handling ^C; another ^C will exit the program.
 		cancel()
 	}()
 	if err := run(ctx); err != nil {
-		log.Fatal(err)
+		log.Fatal(err.Error())
 	}
 }
 
@@ -31,33 +30,27 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	// Register metrics and handler
-	metrics := internal.NewMetricsServer()
-	metrics.RegisterHandler()
-
 	g, ctx := errgroup.WithContext(ctx)
+	logger := slog.Default()
+
+	// Start metrics server
+	metrics, err := internal.StartMetricsServer(ctx, logger, g)
+	if err != nil {
+		return err
+	}
 
 	// Start syslog daemons for each chroot
 	err = internal.StartSyslogDaemons(
 		ctx,
+		logger,
 		g,
 		cfg,
-		&internal.Logger{Out: os.Stdout},
+		&internal.Logger{Logger: logger},
 		metrics,
 	)
 	if err != nil {
 		return err
 	}
-
-	// Start metrics http server
-	server := http.Server{
-		Addr: ":8080",
-	}
-	g.Go(func() error {
-		go server.ListenAndServe()
-		<-ctx.Done()
-		return server.Close()
-	})
 
 	// Block until context canceled
 	return g.Wait()

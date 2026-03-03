@@ -90,7 +90,6 @@ PasswordAuthentication no
 Subsystem sftp internal-sftp -f AUTH -l VERBOSE
 SyslogFacility AUTH
 LogLevel VERBOSE
-
 `)
 	return b.String(), nil
 }

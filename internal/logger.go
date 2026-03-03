@@ -1,15 +1,14 @@
 package internal
 
 import (
-	"fmt"
-	"io"
+	"log/slog"
 )
 
-// Logger logs messages from sftpd to an output device (typically stdout).
+// Logger logs messages from sftpd
 type Logger struct {
-	Out io.Writer
+	*slog.Logger
 }
 
 func (l *Logger) receive(msg message) {
-	fmt.Fprintf(l.Out, "%v %s %v: %s\n", msg.Timestamp, msg.Appname, msg.User, msg.Message)
+	l.Logger.Info(msg.Message, "user", msg.User, "program", msg.Appname)
 }

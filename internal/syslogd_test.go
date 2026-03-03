@@ -97,7 +97,7 @@ func TestProcessMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			recv := &mockReceiver{}
 			u := user{Username: "alice"}
-			s := &syslogd{user: u, receivers: []syslogdReceiver{recv}}
+			s := &syslogd{user: u, receivers: []receiver{recv}}
 
 			s.processMessage([]byte(tt.input))
 
@@ -113,7 +113,7 @@ func TestProcessMessage(t *testing.T) {
 
 func TestProcessMessageInvalid(t *testing.T) {
 	recv := &mockReceiver{}
-	s := &syslogd{user: user{Username: "alice"}, receivers: []syslogdReceiver{recv}}
+	s := &syslogd{user: user{Username: "alice"}, receivers: []receiver{recv}}
 
 	s.processMessage([]byte("this is not a syslog message\n"))
 
@@ -125,7 +125,7 @@ func TestProcessMessageMultipleReceivers(t *testing.T) {
 	recv2 := &mockReceiver{}
 	s := &syslogd{
 		user:      user{Username: "alice"},
-		receivers: []syslogdReceiver{recv1, recv2},
+		receivers: []receiver{recv1, recv2},
 	}
 
 	s.processMessage([]byte(sftpLogs1 + "\n"))
@@ -146,7 +146,7 @@ func TestHandleUnix(t *testing.T) {
 	recv := &mockReceiver{}
 	s := &syslogd{
 		user:      user{Username: "alice"},
-		receivers: []syslogdReceiver{recv},
+		receivers: []receiver{recv},
 		conn:      conn,
 	}
 

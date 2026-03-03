@@ -55,6 +55,10 @@ spec:
         env:
         - name: CONFIG_FILE_PATH
           value: /config/config.yaml
+        ports:
+          - name: metrics
+            containerPort: 8080
+            protocol: TCP
         restartPolicy: Always
         volumeMounts:
         - name: chroots
